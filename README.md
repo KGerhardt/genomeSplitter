@@ -8,7 +8,7 @@ genomeSplitter is both a class accessible through the python API and a command l
 The original intent of genomeSplitter is threefold:
 * Split very large genomes into evenly sized pieces for efficient parallel processing with python
 * Split genomes of any size into chunks small enough to fit into limited RAM while processing in parallel
-* Split very large contigs in a genome (e.g.< >2Gbp lungfish chromosomes) into chunks with overlaps so that aligners with 32-bit sequence length limits can function
+* Split very large contigs in a genome (e.g.< >2Gbp lungfish chromosomes) into chunks with overlaps so that aligners with 32-bit sequence length limits can function and not miss alignments due to breaking sequences at a bad place.
 
 # Dependencies
 
