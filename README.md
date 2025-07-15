@@ -19,7 +19,7 @@ The original intent of genomeSplitter is threefold:
 # API: 
 
 ```python
-from genome_splitter import genomeSplitter
+from genomeSplitter import genomeSplitter
 
 genome_file = 'path/to/genome'
 outdir = 'output_directory/to/create'
@@ -42,5 +42,5 @@ paths_to_output_files = gs.run()
 # Command line
 
 ```bash
-python3 split_genomes.py --genome path/to/genome --output_directory output_directory/to/create --processors 4 --index_outputs --smart
+python3 genomeSplitter.py --genome path/to/genome --output_directory output_directory/to/create --processors 4 --index_outputs --smart
 ```
