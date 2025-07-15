@@ -26,6 +26,7 @@ outdir = 'output_directory/to/create'
 threads = 4
 chnk = 25_000_000
 olap = 1_000_000
+ow = False
 
 gs = genomeSplitter(genome_file = genome,
                   output_directory = outdir,
@@ -34,7 +35,8 @@ gs = genomeSplitter(genome_file = genome,
                   processors = threads,
                   smart = False,
                   post_index = True,
-                  verbose = True
+                  verbose = True,
+                  overwrite = ow
                   )
 paths_to_output_files = gs.run()
 ```
