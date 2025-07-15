@@ -1,9 +1,7 @@
-import sys
 import os
 import multiprocessing
 import pyfastx
 import sqlite3
-import shutil
 import argparse
 
 def options():
