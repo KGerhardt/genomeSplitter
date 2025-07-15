@@ -3,8 +3,8 @@ import os
 import multiprocessing
 import pyfastx
 import sqlite3
+import shutil
 import argparse
-
 
 def options():
 	parser = argparse.ArgumentParser(
@@ -37,6 +37,9 @@ def options():
 						help='Create Pyfastx indices of split genome files to facilitate later processing.')
 	parser.add_argument('--smart', action='store_true',
 						help='Make an effort to divide the genome into --processors chunks so that later parallel processing can be ~1 process/chunk. No guarantees.')
+	parser.add_argument('--overwrite', action='store_true',
+						help='Delete existing genomeSplitter outputs in the output directory, if any are found.')
+
 
 	args = parser.parse_args()
 
@@ -55,7 +58,7 @@ def options():
 class genomeSplitter:
 	def __init__(self, genome_file, output_directory, chunk_size = 250_000_000, 
 				overlap_size = 1_000_000, procs = 1, smart = False, post_index = False, 
-				verbose = False):
+				verbose = False, overwrite = False):
 		self.path = os.path.abspath(genome_file)
 		self.index = f'{self.path}.fxi'
 		
@@ -74,6 +77,7 @@ class genomeSplitter:
 		self.threads = procs
 		self.verbose = verbose
 		self.do_output_index = post_index
+		self.overwrite = overwrite
 		
 		self.output_files = None
 		
@@ -104,7 +108,7 @@ class genomeSplitter:
 	#Divide long sequences into even chunks with overlap as close to chunk size as possible without going over
 	def evenly_chunk_long_sequences(self, longs):
 		long_split_plan = {}
-		if self.verbose:
+		if self.verbose and len(longs) > 0:
 			print('')
 			print(f'Long sequence splits have been planned. Here is the summary:')
 			print('')
@@ -161,7 +165,7 @@ class genomeSplitter:
 			chunk_length_record[shortest_chunk] += seqlen
 			shortest_chunk = min(chunk_length_record, key=chunk_length_record.get)			
 		
-		if self.verbose:
+		if self.verbose and len(shorts) > 0:
 			print('Short sequences have been aggregated. Here is the summary:')
 			print('')
 			for i in short_split_plan:
@@ -233,7 +237,7 @@ class genomeSplitter:
 		if not os.path.exists(self.outdir):
 			print(f'Making directory {self.outdir}')
 			os.makedirs(self.outdir, exist_ok = True)
-	
+			
 	def execute_split(self):
 		print('Executing genome split.')
 		total_outputs = len(self.overall_split_plan)
@@ -266,13 +270,103 @@ class genomeSplitter:
 		print('Genome split complete.')
 				
 		return self.output_files
-		
-	def run(self):
-		self.index_and_summarize()
-		self.prepare_split_plan()
-		self.execute_split()
+	
+	def indices_only(self):
+		outputs = [os.path.join(self.outdir, os.path.basename(f)) for f in self.output_files]
+		completed_indices = []
+		ok_threads = min([len(outputs), self.threads])
+		with multiprocessing.Pool(ok_threads) as pool:
+			for result in pool.imap_unordered(index_only, outputs):
+				completed_indices.append(result)
+	
+		completed_indices.sort()
+		self.output_files = completed_indices
 		
 		return self.output_files
+	
+	def compare_log_to_plan(self, log_file):
+		outputs = []
+		with open(log_file) as fh:
+			for line in fh:
+				param = line.strip().split('\t')[1]
+				outputs.append(param)
+		
+		plan = []
+		plan.append(str(self.chunk))
+		plan.append(str(self.olap))
+		
+		plan_and_log_are_identical = outputs[0] == plan[0] and outputs[1] == plan[1]
+		#Check if this run is asking for indices
+		
+		just_index = self.do_output_index and outputs[2] == "False"
+		
+		return plan_and_log_are_identical, just_index, outputs[3:]
+			
+	def clean_outdir(self):
+		for filename in os.listdir(self.outdir):
+			file_path = os.path.join(self.outdir, filename)
+			if os.path.isfile(file_path):  # Check if it's a file
+				os.remove(file_path)
+	
+	def create_log(self, log_file):
+		with open(log_file, 'w') as out:
+			print(f'chunk_size\t{self.chunk}', file = out)
+			print(f'overlap_size\t{self.olap}', file = out)
+			print(f'indices_created\t{self.do_output_index}', file = out)
+			for f in self.output_files:
+				print(f'{self.do_output_index}\t{f}', file = out)
+
+	def run(self):
+		already_run = False
+		needs_index = False
+		self.index_and_summarize()
+		self.prepare_split_plan()
+		
+		log_file = os.path.join(self.outdir, 'genomeSplitter.log')
+		if os.path.exists(log_file):
+			#Silently run this
+			unchanged_plan, needs_index, previous_log = self.compare_log_to_plan(log_file)
+			print('')
+			print(f'It looks like genomeSplitter was run previously in {self.outdir}')
+			if self.overwrite:
+				if unchanged_plan:
+					print('Even though --overwrite was supplied, the current plan is identical to the previous run.')
+					print('')
+					print('Previous and current run shared parameters:')
+					print(f'\tChunk size = {self.chunk}')
+					print(f'\tOverlap size = {self.olap}')
+					print('')
+					if needs_index:
+						print('However, this run requested Pyfastx indices for the outputs and those were not previously created.')
+						print('Those will be created now.')
+					else:
+						print('There is no point in rerunning genomeSplitter unless the parameters are different.')
+					already_run = True
+				else:
+					print('Different parameters were supplied to the current run. Removing old files and splitting the genome.')
+					self.clean_outdir()
+			else:
+				print('')
+				print(f'--overwrite was not supplied. genomeSplitter will not try to re-split this genome.')
+				already_run = True
+				if needs_index:
+					print('However, this run requested Pyfastx indices for the outputs and those were not previously created.')
+					print('Those will be created now.')
+					
+			print('')
+		
+		if not already_run:	
+			self.execute_split()
+			self.create_log(log_file)
+			
+		else:
+			if needs_index:	
+				self.output_files = previous_log
+				self.output_files.sort()
+				self.indices_only()
+				self.create_log(log_file)
+		
+		return 
 		
 def format_num_bp(string, size = 70):
 	politely_formatted = '\n'.join([(string[i:i+size]) for i in range(0, len(string), size)])
@@ -312,6 +406,9 @@ def chunk_write(args):
 	
 	return output_file
 
+def index_only(filepath):
+	pyfastx.Fasta(filepath, build_index = True)
+	return filepath
 
 def main():
 	#Used in parallel processes
@@ -325,6 +422,7 @@ def main():
 	o = opts.overlap_size
 	v = opts.verbose
 	s = opts.smart
+	ow = opts.overwrite
 	
 	mn = genomeSplitter(genome_file = genome_file, 
 				output_directory = output_dir, 
@@ -333,8 +431,8 @@ def main():
 				procs = p,
 				smart = s,
 				post_index = index_outputs,
-				verbose = v				
-				)
+				verbose = v,			
+				overwrite = ow)
 				
 	output_files = mn.run()
 
