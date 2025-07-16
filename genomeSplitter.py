@@ -375,9 +375,9 @@ class genomeSplitter:
 			self.create_log(log_file)
 			
 		else:
+			self.output_files = previous_log
+			self.output_files.sort()
 			if needs_index:	
-				self.output_files = previous_log
-				self.output_files.sort()
 				self.indices_only()
 				self.create_log(log_file)
 		
