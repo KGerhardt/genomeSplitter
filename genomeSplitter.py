@@ -56,7 +56,7 @@ def options():
 class genomeSplitter:
 	def __init__(self, genome_file, output_directory, chunk_size = 250_000_000, 
 				overlap_size = 1_000_000, procs = 1, smart = False, post_index = False, 
-				verbose = False, overwrite = False):
+				verbose = False, overwrite = False, quiet = False):
 		self.path = os.path.abspath(genome_file)
 		self.index = f'{self.path}.fxi'
 		
@@ -74,6 +74,7 @@ class genomeSplitter:
 		self.smart = smart
 		self.threads = procs
 		self.verbose = verbose
+		self.quiet = quiet
 		self.do_output_index = post_index
 		self.overwrite = overwrite
 		
@@ -82,13 +83,16 @@ class genomeSplitter:
 	#Create pyfastx index for the genome if it doesnt exist; load sequence lengths for planning.
 	def index_and_summarize(self):
 		if os.path.exists(self.index):
-			print(f'Pyfastx index already found for {os.path.basename(self.path)}.')
-			print(f'Loading sequence summary.')
+			if not self.quiet:
+				print(f'Pyfastx index already found for {os.path.basename(self.path)}.')
+				print(f'Loading sequence summary.')
 		else:
-			print(f'Beginning Pyfastx index process on {os.path.basename(self.path)}.')
-			print(f'This should only take a few seconds per billion bp in your genome.')
+			if not self.quiet:
+				print(f'Beginning Pyfastx index process on {os.path.basename(self.path)}.')
+				print(f'This should only take a few seconds per billion bp in your genome.')
 			fa = pyfastx.Fasta(self.path, build_index = True)
-			print('Indexing complete.')
+			if not self.quiet:
+				print('Indexing complete.')
 		
 		conn = sqlite3.connect(self.index)
 		curs = conn.cursor()
@@ -100,8 +104,8 @@ class genomeSplitter:
 			seq_name = row[0]
 			seq_length = row[1]
 			self.seqs_and_lengths[seq_name] = seq_length
-		
-		print(f'Sequence summarized.')
+		if not self.quiet:
+			print(f'Sequence summarized.')
 
 	#Divide long sequences into even chunks with overlap as close to chunk size as possible without going over
 	def evenly_chunk_long_sequences(self, longs):
@@ -186,16 +190,18 @@ class genomeSplitter:
 		#Check manual sizes are OK.
 		if chunk_size is not None or overlap_size is not None:
 			if isinstance(chunk_size, int) and isinstance(overlap_size, int):
-				print(f'Using newly supplied chunk size {chunk_size} and overlap size {overlap_size}')
+				if not self.quiet:
+					print(f'Using newly supplied chunk size {chunk_size} and overlap size {overlap_size}')
 				self.chunk = chunk_size
 				self.olap = overlap_size
 			else:
-				print(f'It looks like you tried to supply a new size of chunk and overlap, but they were not properly formatted.')
-				print(f'These must both be integers. Supplied values:')
-				print(f'\tChunk size: {chunk_size}')
-				print(f'\tOverlap size: {overlap_size}')
-				print('')
-				print(f'Resorting to program defaults of chunk size {self.chunk} and overlap size {self.olap}')
+				if not self.quiet:
+					print(f'It looks like you tried to supply a new size of chunk and overlap, but they were not properly formatted.')
+					print(f'These must both be integers. Supplied values:')
+					print(f'\tChunk size: {chunk_size}')
+					print(f'\tOverlap size: {overlap_size}')
+					print('')
+					print(f'Resorting to program defaults of chunk size {self.chunk} and overlap size {self.olap}')
 		else: #do not try to be smart if sizes were manually supplied.
 			if self.smart:
 				self.one_per_proc()
@@ -229,7 +235,8 @@ class genomeSplitter:
 		self.long_plan = None
 		self.short_plan = None
 		
-		print(f'Genome split plan complete.')
+		if not self.quiet:
+			print(f'Genome split plan complete.')
 		
 	def prep_outdir(self):
 		if not os.path.exists(self.outdir):
@@ -237,7 +244,8 @@ class genomeSplitter:
 			os.makedirs(self.outdir, exist_ok = True)
 			
 	def execute_split(self):
-		print('Executing genome split.')
+		if not self.quiet:
+			print('Executing genome split.')
 		total_outputs = len(self.overall_split_plan)
 		if self.verbose:
 			print(f'Genome {os.path.basename(self.path)} will be split into {total_outputs} chunked outputs.')
@@ -265,7 +273,8 @@ class genomeSplitter:
 				
 		self.output_files.sort()
 		
-		print('Genome split complete.')
+		if not self.quiet:
+			print('Genome split complete.')
 				
 		return self.output_files
 	
@@ -324,34 +333,42 @@ class genomeSplitter:
 		if os.path.exists(log_file):
 			#Silently run this
 			unchanged_plan, needs_index, previous_log = self.compare_log_to_plan(log_file)
-			print('')
-			print(f'It looks like genomeSplitter was run previously in {self.outdir}')
+			if not self.quiet:
+				print('')
+				print(f'It looks like genomeSplitter was run previously in {self.outdir}')
 			if self.overwrite:
 				if unchanged_plan:
-					print('Even though --overwrite was supplied, the current plan is identical to the previous run.')
-					print('')
-					print('Previous and current run shared parameters:')
-					print(f'\tChunk size = {self.chunk}')
-					print(f'\tOverlap size = {self.olap}')
-					print('')
+					if not self.quiet:
+						print('Even though --overwrite was supplied, the current plan is identical to the previous run.')
+						print('')
+						print('Previous and current run shared parameters:')
+						print(f'\tChunk size = {self.chunk}')
+						print(f'\tOverlap size = {self.olap}')
+						print('')
 					if needs_index:
-						print('However, this run requested Pyfastx indices for the outputs and those were not previously created.')
-						print('Those will be created now.')
+						if not self.quiet:
+							print('However, this run requested Pyfastx indices for the outputs and those were not previously created.')
+							print('Those will be created now.')
 					else:
-						print('There is no point in rerunning genomeSplitter unless the parameters are different.')
+						if not self.quiet:
+							print('There is no point in rerunning genomeSplitter unless the parameters are different.')
 					already_run = True
 				else:
-					print('Different parameters were supplied to the current run. Removing old files and splitting the genome.')
+					if not self.quiet:
+						print('Different parameters were supplied to the current run. Removing old files and splitting the genome.')
 					self.clean_outdir()
 			else:
-				print('')
-				print(f'--overwrite was not supplied. genomeSplitter will not try to re-split this genome.')
+				if not self.quiet:
+					print('')
+					print(f'--overwrite was not supplied. genomeSplitter will not try to re-split this genome.')
 				already_run = True
 				if needs_index:
-					print('However, this run requested Pyfastx indices for the outputs and those were not previously created.')
-					print('Those will be created now.')
-					
-			print('')
+					if not self.quiet:
+						print('However, this run requested Pyfastx indices for the outputs and those were not previously created.')
+						print('Those will be created now.')
+			
+			if not self.quiet:		
+				print('')
 		
 		if not already_run:	
 			self.execute_split()
