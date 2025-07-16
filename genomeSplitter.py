@@ -381,7 +381,7 @@ class genomeSplitter:
 				self.indices_only()
 				self.create_log(log_file)
 		
-		return 
+		return self.output_files
 		
 def format_num_bp(string, size = 70):
 	politely_formatted = '\n'.join([(string[i:i+size]) for i in range(0, len(string), size)])
